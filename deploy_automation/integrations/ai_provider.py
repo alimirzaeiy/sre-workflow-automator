@@ -201,14 +201,14 @@ Do not include markdown blocks or any other text outside the JSON.
     ) -> str:
         """
         Generates a professional Persian comment explaining missing deployment requirements
-        based on the organizational 9-point deployment readiness standards.
+        based on project readiness standards.
         """
         if not failed_checks:
-            return "کلیه الزامات استقرار در پروداکشن مطابق با استانداردهای سازمانی بررسی و تایید شد."
+            return "کلیه الزامات استقرار مطابق با استانداردهای تعریف‌شده بررسی و تایید شد."
 
         prompt = f"""You are an SRE Manager AI assistant.
 A deployment task was submitted for microservice/project '{project_name}'.
-During our automated audit against the organizational Git Flow and Production Deployment Readiness Standards (الزامات استقرار در Production), the following issues were found:
+During our automated audit against the project deployment readiness standards (الزامات استقرار), the following issues were found:
 
 Issues detected:
 """

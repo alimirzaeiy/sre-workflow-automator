@@ -931,7 +931,7 @@ class ComprehensiveLaptopDeployer:
 
         # Step 2: Check Deploy Requirements (Main/Dev/Stage only)
         if not is_production and start_milestone == DeploymentMilestone.REQUIREMENTS_CHECK:
-            print("⏳ Auditing 9 deploy readiness standards...")
+            print("⏳ Auditing deploy readiness standards...")
             project = await self.gitlab_service.get_project(task_info.repo_url)
             if project:
                 files_map = await self.gitlab_service.get_repository_files_map(project)

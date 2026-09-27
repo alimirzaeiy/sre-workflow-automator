@@ -37,7 +37,7 @@ deploy_automation/          → See deploy_automation/GEMINI.md
 │   ├── telegram_service.py → Legacy single-admin bot (review approve/reject)
 │   └── token_store.py      → In-memory RAM token store (no disk writes)
 ├── engine/                 → See deploy_automation/engine/GEMINI.md
-│   ├── checker.py          → 9-point Git Flow readiness checker
+│   ├── checker.py          → Deployment readiness and standards compliance checker
 │   ├── decision_engine.py  → Rule-based / AI task assignment engine
 │   ├── task_state_detector.py → Detects current deploy milestone from task state
 │   ├── cicd_generator.py   → Generates .gitlab-ci.yml deploy jobs

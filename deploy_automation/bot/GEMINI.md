@@ -46,7 +46,7 @@ notify_task_dispatched(task, member, reason, msg_thread_id)  # sends proposal to
 - `ClickUpService` — fetch tasks, post comments, change status
 - `GitLabService` — check maintainer access
 - `AIServiceProvider` — generate deployment readiness comment text
-- `DeployRequirementsChecker` — run 9-point check
+- `DeployRequirementsChecker` — run readiness check
 - `InMemoryTokenStore` — collect & retrieve GitLab token from user
 - `database` — `save_task_conversation_state`, `get_task_conversation_state`, `get_user_active_conversations`, `save_task_proposal_message`, `get_task_proposal_messages`
 - `config_canned_responses` — CANNED_CLOSE_RESPONSES dict

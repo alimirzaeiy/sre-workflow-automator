@@ -11,7 +11,7 @@ Pure business logic layer. No HTTP calls, no database writes (except `task_state
 
 ### `checker.py` — `DeployRequirementsChecker`
 
-Evaluates **9 organizational Git Flow deployment standards** against GitLab repo files.
+Evaluates **repository deployment readiness and standards compliance** against GitLab repo files.
 
 **Constructor:**
 ```python

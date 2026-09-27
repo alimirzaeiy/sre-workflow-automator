@@ -870,7 +870,7 @@ class SREManagerBot:
         await self.app.bot.edit_message_text(
             chat_id=chat_id,
             message_id=status_msg_id,
-            text="✅ دسترسی Maintainer تایید شد.\n📥 در حال بررسی ساختار مخزن و الزامات ۹‌گانه استقرار Git Flow سازمانی..."
+            text="✅ دسترسی Maintainer تایید شد.\n📥 در حال بررسی ساختار مخزن و الزامات استقرار..."
         )
 
         project = await gl.get_project(repo_url)
@@ -889,9 +889,9 @@ class SREManagerBot:
                 chat_id=chat_id,
                 message_id=status_msg_id,
                 text=(
-                    f"🎉 <b>کلیه الزامات ۹‌گانه استقرار رعایت شده است!</b>\n\n"
+                    f"🎉 <b>کلیه الزامات استقرار رعایت شده است!</b>\n\n"
                     f"پروژه: <code>{project_name}</code>\n"
-                    f"تمام موارد سند Git Flow و چک‌لیست استقرار Production تایید گردید.\n"
+                    f"تمام موارد چک‌لیست استقرار تایید گردید.\n"
                     f"اکنون می‌توانید مراحل دیپلوی سرویس را ادامه دهید."
                 ),
                 parse_mode="HTML"

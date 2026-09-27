@@ -17,17 +17,11 @@ An enterprise-ready, open-source automation platform for DevOps and SRE teams. I
   6. `Deployment Verified / Tested`
 - Interactive resumption via CLI and Telegram bot from any milestone.
 
-### 2. 9-Point Git Flow Deployment Readiness Auditor
-Automated compliance checker against best-practice deployment standards:
-1. **Macro-Architecture Documentation** in `doc/` or `docs/`.
-2. **Git Flow Branching Structure** (`main`/`master` and `develop`).
-3. **Scope & Responsibilities Document** (`doc/scope.md`).
-4. **Standard `/metrics` Endpoint** (Prometheus, Actuator, OpenTelemetry).
-5. **Health Check Endpoint & Directive** (`/health`, `/healthz`, or Docker `HEALTHCHECK`).
-6. **SonarQube Static Analysis** in CI/CD pipeline.
-7. **Automated Test Coverage Reporting** (cobertura, jacoco, pytest-cov, lcov).
-8. **Frontend Runtime Configuration** (decoupling build artifacts from environment configs via `window.__env` or `config.json`).
-9. **Standard Dockerfile & Automated CI/CD Build/Test Stages**.
+### 2. Deployment Readiness Auditing & Custom Policy Verification (AI-Assisted)
+Automated compliance checker to ensure microservices and repositories adhere to project standards before deployment:
+- **Customizable Requirements & Checklists**: Organizations can configure their own custom list of requirements (such as architecture docs, Git Flow branching, health checks, `/metrics` endpoints, CI/CD stages, SonarQube, test coverage, etc.).
+- **AI-Powered or Rule-Based Validation**: The built-in AI assistant can evaluate developer compliance against your custom requirements prompt or rules, highlight any missing items, and generate constructive feedback comments directly on ClickUp or Telegram.
+- **Automated Defect Commenting**: If requirements are unmet, it drafts polite, actionable remediation guides for developers and moves tasks to `waiting for customer`.
 
 ### 3. Nginx Reverse Proxy & SSL (Certbot) Automation
 - Supports both system daemon (`/etc/nginx/sites-available`) and Docker container (`/srv`) environments.
@@ -73,7 +67,7 @@ deploy_automation/
 │   ├── telegram_service.py     # Single-admin notification bot
 │   └── token_store.py          # Ephemeral RAM token store
 ├── engine/
-│   ├── checker.py              # 9-point deployment readiness checker
+│   ├── checker.py              # Deployment readiness and standards compliance checker
 │   ├── decision_engine.py      # Rule-based and AI task assignment engine
 │   ├── task_state_detector.py  # Deployment phase detector
 │   ├── cicd_generator.py       # GitLab CI/CD deploy job generator
