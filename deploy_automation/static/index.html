@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRE Hub | پایش و اولویت‌بندی تسک‌ها</title>
+    <!-- Google Fonts: Vazirmatn -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Chart.js for Analytics Dashboard -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Ambient liquid glass backdrop lights -->
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
+    <div class="ambient-glow glow-3"></div>
+
+    <div class="app-layout">
+        <!-- Top Navigation Bar -->
+        <header class="glass-header">
+            <div class="header-content">
+                <div class="brand-section">
+                    <div class="brand-logo">
+                        <i data-lucide="layers" class="brand-icon"></i>
+                        <div class="pulse-indicator"></div>
+                    </div>
+                    <div class="brand-info">
+                        <h1 class="brand-title">SRE Hub</h1>
+                        <span class="brand-subtitle">سیستم پایش و اولویت‌بندی هوشمند تسک‌ها</span>
+                    </div>
+                </div>
+
+                <!-- Navigation Tabs -->
+                <nav class="nav-tabs">
+                    <button class="nav-tab active" id="tabMyTasksBtn" onclick="switchTab('myTasks')">
+                        <i data-lucide="user-check"></i>
+                        <span>کارهای من (At a Glance)</span>
+                        <span class="tab-badge" id="myTasksCountBadge">0</span>
+                    </button>
+                    <button class="nav-tab" id="tabSreFormsBtn" onclick="switchTab('sreForms')">
+                        <i data-lucide="clipboard-list"></i>
+                        <span>پاسخ‌های فرم‌های SRE</span>
+                        <span class="tab-badge" id="sreTasksCountBadge">0</span>
+                    </button>
+                    <button class="nav-tab" id="tabAnalyticsBtn" onclick="switchTab('analytics')">
+                        <i data-lucide="bar-chart-3"></i>
+                        <span>داشبورد و نمودارها</span>
+                        <span class="tab-badge tab-badge-accent">جدید</span>
+                    </button>
+                </nav>
+
+                <!-- Actions & User Profile -->
+                <div class="header-actions">
+                    <button class="glass-btn btn-refresh" id="refreshBtn" onclick="refreshData(true)" title="بروزرسانی داده‌ها">
+                        <i data-lucide="refresh-cw" id="refreshIcon"></i>
+                        <span>بروزرسانی</span>
+                    </button>
+
+                    <div class="user-pill" id="userPill">
+                        <div class="user-avatar" id="userAvatar">U</div>
+                        <div class="user-meta">
+                            <span class="user-name" id="userName">در حال بارگذاری...</span>
+                            <span class="user-role">مهندس SRE</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Global Stats Bar -->
+            <section class="stats-overview">
+                <div class="stat-card glass-panel">
+                    <div class="stat-icon-wrapper icon-blue">
+                        <i data-lucide="check-circle-2"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">مجموع تسک‌های فعال</span>
+                        <h3 class="stat-value" id="statTotalTasks">0</h3>
+                    </div>
+                </div>
+
+                <div class="stat-card glass-panel stat-critical">
+                    <div class="stat-icon-wrapper icon-red">
+                        <i data-lucide="alert-octagon"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">اولویت بحرانی (Critical AI)</span>
+                        <h3 class="stat-value" id="statCriticalTasks">0</h3>
+                    </div>
+                </div>
+
+                <div class="stat-card glass-panel stat-high">
+                    <div class="stat-icon-wrapper icon-amber">
+                        <i data-lucide="flame"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">اولویت بالا (High AI)</span>
+                        <h3 class="stat-value" id="statHighTasks">0</h3>
+                    </div>
+                </div>
+
+                <div class="stat-card glass-panel">
+                    <div class="stat-icon-wrapper icon-purple">
+                        <i data-lucide="sparkles"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">موتور اولویت‌بندی</span>
+                        <h3 class="stat-value text-ai-badge">Dual-Engine AI</h3>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Search & Filters Bar -->
+            <section class="filter-toolbar glass-panel">
+                <div class="search-box">
+                    <i data-lucide="search" class="search-icon"></i>
+                    <input type="text" id="searchInput" placeholder="جستجو در تسک‌ها، ریپازیتوری، افراد، یا محتوا..." oninput="handleSearch()">
+                    <button class="clear-search-btn" id="clearSearchBtn" onclick="clearSearch()" style="display: none;">
+                        <i data-lucide="x"></i>
+                    </button>
+                </div>
+
+                <div class="filter-controls">
+                    <div class="filter-group" id="formFilterGroup" style="display: none;">
+                        <label for="formSelect">فرم:</label>
+                        <select id="formSelect" onchange="applyFilters()">
+                            <option value="ALL">همه فرم‌ها</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="urgencySelect">فوریت هوش مصنوعی:</label>
+                        <select id="urgencySelect" onchange="applyFilters()">
+                            <option value="ALL">همه سطوح</option>
+                            <option value="CRITICAL">بحرانی (Critical)</option>
+                            <option value="HIGH">بالا (High)</option>
+                            <option value="MEDIUM">متوسط (Medium)</option>
+                            <option value="LOW">عادی (Low)</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="stateSelect">وضعیت:</label>
+                        <select id="stateSelect" onchange="applyFilters()">
+                            <option value="ALL">همه وضعیت‌ها</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 1: My Tasks (At a Glance - Grouped by State) -->
+            <section id="viewMyTasks" class="view-section active">
+                <div class="section-header">
+                    <div class="section-title-wrap">
+                        <h2>کارهای من (At a Glance)</h2>
+                        <span class="section-desc">تسک‌های محول‌شده به شما، دسته‌بندی‌شده بر اساس وضعیت و رتبه‌بندی‌شده با اولویت هوش مصنوعی</span>
+                    </div>
+                    <span class="active-count-tag" id="myTasksSectionCount">۰ تسک</span>
+                </div>
+
+                <!-- State Groups Container -->
+                <div id="stateGroupsContainer" class="state-groups-container">
+                    <!-- Dynamic state groups rendered here -->
+                    <div class="loading-state">
+                        <div class="liquid-spinner"></div>
+                        <p>در حال واکشی و تحلیل هوشمند کارهای شما...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 2: SRE Space Form Responses (Flat list ordered by AI) -->
+            <section id="viewSreForms" class="view-section">
+                <div class="section-header">
+                    <div class="section-title-wrap">
+                        <h2>پاسخ‌های فرم‌های اسپیس SRE</h2>
+                        <span class="section-desc">تمام درخواست‌های ثبت‌شده در فرم‌های SRE به ترتیب اولویت و فوریت هوش مصنوعی</span>
+                    </div>
+                    <span class="active-count-tag" id="sreSectionCount">۰ درخواست</span>
+                </div>
+
+                <!-- Flat Task List Table/Cards -->
+                <div class="glass-panel forms-list-panel">
+                    <div class="forms-table-header">
+                        <div class="col col-priority">اولویت AI</div>
+                        <div class="col col-title">عنوان تسک</div>
+                        <div class="col col-duration sortable-header" data-sort="duration" onclick="handleTableSort('duration')" title="مرتب‌سازی بر اساس مدت زمان در این وضعیت">
+                            <span>مدت در این وضعیت</span>
+                            <span class="sort-icon-wrap" id="sortIcon_duration"><i data-lucide="chevrons-up-down"></i></span>
+                        </div>
+                        <div class="col col-form-env">محیط / فرم</div>
+                        <div class="col col-reporter">ثبت‌کننده (Reporter)</div>
+                        <div class="col col-assignee sortable-header" data-sort="assignee" onclick="handleTableSort('assignee')" title="مرتب‌سازی بر اساس نام مسئول">
+                            <span>مسئول (Assignee)</span>
+                            <span class="sort-icon-wrap" id="sortIcon_assignee"><i data-lucide="chevrons-up-down"></i></span>
+                        </div>
+                        <div class="col col-state sortable-header" data-sort="state" onclick="handleTableSort('state')" title="مرتب‌سازی بر اساس وضعیت">
+                            <span>وضعیت (State)</span>
+                            <span class="sort-icon-wrap" id="sortIcon_state"><i data-lucide="chevrons-up-down"></i></span>
+                        </div>
+                        <div class="col col-action"></div>
+                    </div>
+                    <div id="sreTasksContainer" class="sre-tasks-container">
+                        <!-- Dynamic rows rendered here -->
+                        <div class="loading-state">
+                            <div class="liquid-spinner"></div>
+                            <p>در حال واکشی تسک‌های فرم‌های اسپیس SRE...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 3: SRE Analytics & Charts Dashboard -->
+            <section id="viewAnalytics" class="view-section">
+                <div class="section-header">
+                    <div class="section-title-wrap">
+                        <h2>داشبورد تحلیلی و آماری SRE</h2>
+                        <span class="section-desc">تحلیل‌های هوشمند توزیع بار کاری، ماندگاری تسک‌ها، روند تحویل و نقشه فعالیت تیمی کلیک‌آپ</span>
+                    </div>
+                    <span class="active-count-tag" id="analyticsUpdatedTime">به‌روزرسانی خودکار</span>
+                </div>
+
+                <!-- Grid Row 1: Donut (Assignees) & Line (Task Count per State) -->
+                <div class="analytics-charts-grid">
+                    <!-- Chart 1: Donut Assignees -->
+                    <div class="glass-panel chart-card">
+                        <div class="chart-card-header">
+                            <div class="chart-title-wrap">
+                                <i data-lucide="pie-chart" class="chart-header-icon text-cyan"></i>
+                                <div>
+                                    <h3 class="chart-card-title">توزیع تسک‌های باز به تفکیک مسئول (Assignees)</h3>
+                                    <span class="chart-card-subtitle">تعداد و سهم تسک‌های تخصیص‌یافته به هر عضو تیم</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="chart-canvas-container donut-canvas-container">
+                            <canvas id="assigneeDonutChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Chart 2: Bar Task Count per State -->
+                    <div class="glass-panel chart-card">
+                        <div class="chart-card-header">
+                            <div class="chart-title-wrap">
+                                <i data-lucide="bar-chart-2" class="chart-header-icon text-purple"></i>
+                                <div>
+                                    <h3 class="chart-card-title">مجموع تسک‌ها در هر وضعیت (State Counts)</h3>
+                                    <span class="chart-card-subtitle">توزیع حجم تسک‌های فعال بر اساس وضعیت کاری</span>
+                                </div>
+                            </div>
+                            <!-- Form Filter Selector -->
+                            <div class="chart-filter-select-wrap">
+                                <select id="stateCountFormSelect" onchange="onStateCountFormChange()" class="compact-chart-select">
+                                    <option value="all">همه فرم‌ها</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="chart-canvas-container">
+                            <canvas id="stateCountChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Grid Row 2: Avg Days in New by Form & Weekly Throughput -->
+                <div class="analytics-charts-grid">
+                    <!-- Chart 3: Avg Days in New State by Form -->
+                    <div class="glass-panel chart-card">
+                        <div class="chart-card-header">
+                            <div class="chart-title-wrap">
+                                <i data-lucide="timer" class="chart-header-icon text-amber"></i>
+                                <div>
+                                    <h3 class="chart-card-title">میانگین روزهای انتظار در وضعیت New</h3>
+                                    <span class="chart-card-subtitle">به تفکیک پاسخ‌های فرم‌های مختلف SRE</span>
+                                </div>
+                            </div>
+                            <!-- Time Range Selector -->
+                            <div class="chart-filter-select-wrap">
+                                <select id="avgDaysRangeSelect" onchange="onAvgDaysRangeChange()" class="compact-chart-select">
+                                    <option value="1w">هفته اخیر</option>
+                                    <option value="1m">ماه اخیر</option>
+                                    <option value="3m">سه ماه اخیر</option>
+                                    <option value="6m">۶ ماه اخیر</option>
+                                    <option value="1y">سال اخیر</option>
+                                    <option value="all" selected>کل بازه</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="chart-canvas-container">
+                            <canvas id="avgDaysNewChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Chart 4: Closed / Ready to Test Tasks in Past 7 Days -->
+                    <div class="glass-panel chart-card">
+                        <div class="chart-card-header">
+                            <div class="chart-title-wrap">
+                                <i data-lucide="check-check" class="chart-header-icon text-emerald"></i>
+                                <div>
+                                    <h3 class="chart-card-title">تسک‌های تکمیل یا آماده تست در ۷ روز گذشته</h3>
+                                    <span class="chart-card-subtitle">روند تحویل و خروجی روزبه‌روز تیم طی یک هفته اخیر</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="chart-canvas-container">
+                            <canvas id="weeklyThroughputChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Grid Row 3: Avg In-Progress Duration by Form -->
+                <div class="analytics-charts-grid analytics-charts-grid--single">
+                    <!-- Chart 5: Avg Days In Progress by Form (Closed Tasks) -->
+                    <div class="glass-panel chart-card">
+                        <div class="chart-card-header">
+                            <div class="chart-title-wrap">
+                                <i data-lucide="clock-4" class="chart-header-icon text-orange"></i>
+                                <div>
+                                    <h3 class="chart-card-title">میانگین زمان انجام تسک</h3>
+                                    <span class="chart-card-subtitle">میانگین مدت زمان (روز) از ایجاد تا بسته‌شدن یا آماده تست (Ready for Test)، به تفکیک فرم</span>
+                                </div>
+                            </div>
+                            <!-- Time Range Selector -->
+                            <div class="chart-filter-select-wrap">
+                                <select id="avgInprogressRangeSelect" onchange="onAvgInprogressRangeChange()" class="compact-chart-select">
+                                    <option value="1w">هفته اخیر</option>
+                                    <option value="1m">ماه اخیر</option>
+                                    <option value="3m">سه ماه اخیر</option>
+                                    <option value="6m">۶ ماه اخیر</option>
+                                    <option value="1y">سال اخیر</option>
+                                    <option value="all" selected>کل بازه</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="chart-canvas-container">
+                            <canvas id="avgDaysInProgressChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Grid Row 4: ClickUp Activity Heatmap (GitLab Style Matrix) -->
+                <div class="glass-panel chart-card heatmap-card">
+                    <div class="chart-card-header heatmap-header">
+                        <div class="chart-title-wrap">
+                            <i data-lucide="calendar" class="chart-header-icon text-indigo"></i>
+                            <div>
+                                <h3 class="chart-card-title">نقشه گرمایی فعالیت تیم روی کلیک‌آپ (ClickUp Activity Heatmap)</h3>
+                                <span class="chart-card-subtitle">میزان مشارکت و به‌روزرسانی تسک‌ها در ۳۶۵ روز اخیر به سبک Git Activity</span>
+                            </div>
+                        </div>
+                        <!-- Member Filter Dropdown -->
+                        <div class="heatmap-filter-group">
+                            <label for="heatmapMemberSelect">فیلتر بر اساس فرد:</label>
+                            <select id="heatmapMemberSelect" onchange="renderActivityHeatmap()">
+                                <option value="ALL">همه اعضای تیم (Team Total)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="heatmap-wrapper" id="heatmapContainer">
+                        <!-- Heatmap rendered dynamically via JS -->
+                        <div class="loading-state">
+                            <div class="liquid-spinner"></div>
+                            <p>در حال ایجاد نقشه تعاملی فعالیت‌های کلیک‌آپ...</p>
+                        </div>
+                    </div>
+
+                    <!-- Heatmap Legend -->
+                    <div class="heatmap-legend">
+                        <span class="legend-label">فعالیت کمتر</span>
+                        <span class="heatmap-cell lvl-0"></span>
+                        <span class="heatmap-cell lvl-1"></span>
+                        <span class="heatmap-cell lvl-2"></span>
+                        <span class="heatmap-cell lvl-3"></span>
+                        <span class="heatmap-cell lvl-4"></span>
+                        <span class="legend-label">فعالیت بیشتر</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ClickUp-Style Liquid Glass Modal -->
+    <div class="modal-overlay" id="taskModalOverlay" onclick="handleOverlayClick(event)">
+        <div class="task-modal glass-panel" id="taskModal">
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <div class="modal-header-meta">
+                    <span class="task-status-pill" id="modalTaskStatus">وضعیت</span>
+                    <span class="task-id-badge" id="modalTaskId">#ID</span>
+                    <span class="task-form-pill" id="modalTaskForm">فرم</span>
+                </div>
+                <div class="modal-header-actions">
+                    <a href="#" target="_blank" class="clickup-link-btn" id="modalClickUpLink">
+                        <span>مشاهده در کلیک‌آپ</span>
+                        <i data-lucide="external-link"></i>
+                    </a>
+                    <button class="modal-close-btn" onclick="closeTaskModal()" title="بستن (Esc)">
+                        <i data-lucide="x"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Modal Content -->
+            <div class="modal-body" id="modalBody">
+                <div class="loading-state">
+                    <div class="liquid-spinner"></div>
+                    <p>در حال بارگذاری اطلاعات کامل تسک و کامنت‌ها...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div class="toast-notification" id="toastNotification">
+        <i data-lucide="check-circle" id="toastIcon"></i>
+        <span id="toastMessage">عملیات با موفقیت انجام شد</span>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
