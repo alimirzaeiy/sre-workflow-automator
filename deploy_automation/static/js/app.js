@@ -30,6 +30,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadUserProfile();
     await refreshData(false);
 
+    // Check URL parameters for tab switching or opening task modal
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    if (tabParam && ['myTasks', 'sreForms', 'analytics'].includes(tabParam)) {
+        switchTab(tabParam);
+    }
+    const taskIdParam = urlParams.get('task_id');
+    if (taskIdParam) {
+        setTimeout(() => openTaskModal(taskIdParam), 300);
+    }
+
     // Keyboard shortcut: Esc to close modal
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {

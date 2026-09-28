@@ -49,6 +49,16 @@ Automated compliance checker to ensure microservices and repositories adhere to 
   - Weekly throughput tracker with daily breakdown.
   - **371-Day Activity Heatmap**: Contribution matrix with member filtering and dynamic quantile color scales.
 
+#### 📸 Dashboard Preview
+
+| **My Tasks View (Dual-Engine AI Priority)** | **SRE Forms Monitor** |
+|:---:|:---:|
+| ![My Tasks View](docs/screenshots/01_dashboard_my_tasks.png) | ![SRE Forms Monitor](docs/screenshots/02_dashboard_sre_forms.png) |
+
+| **Analytics Dashboard & Contribution Heatmap** | **Task Details & AI Reasoning Modal** |
+|:---:|:---:|
+| ![Analytics Dashboard](docs/screenshots/03_dashboard_analytics.png) | ![Task Details Modal](docs/screenshots/04_dashboard_task_modal.png) |
+
 ---
 
 ## 📁 Architecture Overview
