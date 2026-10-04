@@ -40,6 +40,7 @@ Key attributes:
 - `settings.TELEGRAM_BOT_TOKEN` / `settings.TELEGRAM_ADMIN_CHAT_ID`
 - `settings.TELEGRAM_TEAM_GROUP_ID` / `settings.SRE_TEAM_MEMBERS` (JSON str)
 - `settings.AI_PROVIDER` (`"openai"` | `"anthropic"`)
+- `settings.PROXY` (unified proxy URL for ClickUp, Telegram, and AI)
 - `settings.GITLAB_URL` / `settings.GITLAB_TOKEN`
 - `settings.DATABASE_URL` (default: `sqlite+aiosqlite:///./data/automation.db`)
 - `settings.DECISION_MODE` (`"rule_engine"` | `"ai"` | `"hybrid"`)

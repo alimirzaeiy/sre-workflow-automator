@@ -15,8 +15,8 @@ The primary ClickUp REST API client. Uses **stdlib `urllib`** (no httpx/aiohttp)
 
 **Constructor:**
 ```python
-ClickUpService(api_token: Optional[str] = None)
-# Defaults to settings.CLICKUP_API_TOKEN
+ClickUpService(api_token: Optional[str] = None, proxy: Optional[str] = None)
+# Defaults to settings.CLICKUP_API_TOKEN, proxy defaults to PROXY / HTTPS_PROXY / HTTP_PROXY / ALL_PROXY
 ```
 
 **Key methods (all async):**
@@ -27,14 +27,17 @@ get_deploy_tasks(statuses) -> list[dict]             # Fetch tasks by status fro
 get_user_assigned_tasks(user_id) -> list[dict]       # Tasks assigned to a specific user
 get_tasks_for_analytics(days) -> list[dict]          # All tasks for dashboard analytics
 get_current_user_id() -> Optional[int]               # Cached user ID lookup
+get_task_comments(task_id, include_replies) -> list[dict] # Fetch task comments including replies
+get_comment_replies(comment_id) -> list[dict]        # Fetch threaded replies for a comment
 post_comment(task_id, comment) -> bool               # Post a comment to a task
 update_task_status(task_id, status) -> bool          # Change task status
 post_maintainer_request_comment(task_id, ...) -> bool# Specific comment for access request
 remove_followers_except(task_id, keep_ids) -> bool   # Remove all followers except listed
 assign_user_to_task(task_id, user_id, reporter_id) -> bool     # Assign user, remove others
 remove_user_from_task_assignees(task_id, user_id) -> bool      # Remove a single user from assignees (for withdraw flow)
-clean_watchers_keep_user_and_reporter(task_id, user_id, reporter_id) -> bool  # Prune watchers
 get_task_members() -> list[dict]                     # Get all SRE team member info
+get_sre_form_tasks(team_id, include_closed, updated_gt) -> list[dict] # Fetch tasks from SRE Form lists
+get_sre_analytics_data(team_id) -> dict                 # Analytics & throughput metrics
 ```
 
 **Internal state:**
@@ -83,7 +86,8 @@ Unified synchronous LLM client (OpenAI-compatible + Anthropic). Used in the disp
 AIServiceProvider(
     provider=None,           # "openai" or "anthropic" (from settings)
     openai_base_url=None, openai_api_key=None, openai_model=None,
-    anthropic_base_url=None, anthropic_api_key=None, anthropic_model=None
+    anthropic_base_url=None, anthropic_api_key=None, anthropic_model=None,
+    proxy=None               # defaults to PROXY / HTTPS_PROXY / HTTP_PROXY / ALL_PROXY
 )
 ```
 
@@ -111,7 +115,8 @@ AIService(base_url=None, auth_token=None)
 
 **Key methods (all sync):**
 ```python
-rank_tasks(tasks: list[dict]) -> list[dict]          # Returns tasks sorted by priority with reasons
+calculate_heuristic_priority(task: dict) -> dict      # SRE heuristic scoring (evaluates creation age, comment activity, staleness)
+prioritize_tasks(tasks: list[dict]) -> list[dict]    # Baseline heuristics + LLM refinement, sorted by priority_score
 generate_fix_suggestion(error_log: str) -> str       # CI/CD failure diagnosis
 ```
 

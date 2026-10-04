@@ -47,6 +47,13 @@ try:
         GITLAB_MIN_ACCESS_LEVEL: int = 40
         TELEGRAM_BOT_TOKEN: str = Field(default="", description="Telegram Bot API Token")
         TELEGRAM_ADMIN_CHAT_ID: int = Field(default=0, description="Telegram Chat ID of SRE / Reviewer")
+
+        # Unified Proxy Configuration (used across Telegram, ClickUp, and AI)
+        PROXY: Optional[str] = Field(default=None, description="Unified proxy URL for ClickUp, Telegram, and AI (e.g. http://127.0.0.1:1080 or socks5://127.0.0.1:1080)")
+        HTTP_PROXY: Optional[str] = Field(default=None, description="Fallback HTTP proxy")
+        HTTPS_PROXY: Optional[str] = Field(default=None, description="Fallback HTTPS proxy")
+        ALL_PROXY: Optional[str] = Field(default=None, description="Fallback general proxy")
+
         # AI Provider Settings (OpenAI / Anthropic compatible)
         AI_PROVIDER: str = "openai"
         OPENAI_BASE_URL: str = "https://api.openai.com/v1"
@@ -105,6 +112,14 @@ except ImportError:
         GITLAB_TOKEN: str = os.getenv("GITLAB_TOKEN", "")
         GITLAB_MIN_ACCESS_LEVEL: int = int(os.getenv("GITLAB_MIN_ACCESS_LEVEL", "40"))
         TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        TELEGRAM_ADMIN_CHAT_ID: int = int(os.getenv("TELEGRAM_ADMIN_CHAT_ID", "0"))
+
+        # Unified Proxy Configuration (used across Telegram, ClickUp, and AI)
+        PROXY: Optional[str] = os.getenv("PROXY", None)
+        HTTP_PROXY: Optional[str] = os.getenv("HTTP_PROXY", None)
+        HTTPS_PROXY: Optional[str] = os.getenv("HTTPS_PROXY", None)
+        ALL_PROXY: Optional[str] = os.getenv("ALL_PROXY", None)
+
         AI_PROVIDER: str = os.getenv("AI_PROVIDER", "openai")
         OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
         OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")

@@ -40,7 +40,8 @@ def set_telegram_service(tg):         # called from main.py lifespan
 | `POST` | `/webhook/clickup` | Receives ClickUp webhook events (`taskCreated`, `taskStatusUpdated`) |
 | `GET` | `/health` | Health check |
 | `GET` | `/api/me` | Current user info from ClickUp |
-| `GET` | `/api/tasks/my` | AI-ranked tasks assigned to current user |
+| `GET` | `/api/team/members` | List of DevOps / SRE team members with profile details |
+| `GET` | `/api/tasks/my` | AI-ranked tasks assigned to specified user (`?user_id=`) or current user |
 | `GET` | `/api/tasks/sre-forms` | All SRE form tasks |
 | `GET` | `/api/analytics/sre` | Analytics data (heatmap, throughput, charts) |
 | `POST` | `/api/tasks/{task_id}/comments` | Post comment to ClickUp task |

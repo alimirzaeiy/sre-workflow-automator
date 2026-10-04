@@ -1,5 +1,7 @@
+import os
 import re
 import json
+import time
 import asyncio
 import urllib.request
 import urllib.parse
@@ -9,11 +11,16 @@ from deploy_automation.models import ClickUpTaskInfo
 
 
 class ClickUpService:
-    def __init__(self, api_token: Optional[str] = None):
+    def __init__(self, api_token: Optional[str] = None, proxy: Optional[str] = None):
         self.api_token = api_token if api_token is not None else settings.CLICKUP_API_TOKEN
         self.base_url = settings.CLICKUP_API_BASE.rstrip("/")
         self._cached_deploy_list_id: Optional[str] = None
         self._cached_user_id: Optional[int] = None
+        self.proxy = proxy or os.getenv("PROXY") or getattr(settings, "PROXY", None) or os.getenv("HTTPS_PROXY") or getattr(settings, "HTTPS_PROXY", None) or os.getenv("HTTP_PROXY") or getattr(settings, "HTTP_PROXY", None) or os.getenv("ALL_PROXY") or getattr(settings, "ALL_PROXY", None)
+        self._opener = None
+        if self.proxy:
+            proxy_handler = urllib.request.ProxyHandler({"http": self.proxy, "https": self.proxy})
+            self._opener = urllib.request.build_opener(proxy_handler)
 
     @property
     def headers(self) -> dict:
@@ -34,25 +41,37 @@ class ClickUpService:
             if data is not None:
                 body_bytes = json.dumps(data).encode("utf-8")
 
-            req = urllib.request.Request(full_url, data=body_bytes, headers=self.headers, method=method.upper())
-            try:
-                with urllib.request.urlopen(req, timeout=15) as response:
-                    status = response.status
-                    resp_body = response.read().decode("utf-8", errors="ignore")
-                    try:
-                        parsed_json = json.loads(resp_body)
-                    except Exception:
-                        parsed_json = resp_body
-                    return status, parsed_json
-            except urllib.error.HTTPError as e:
-                err_body = e.read().decode("utf-8", errors="ignore")
+            max_retries = 3
+            for attempt in range(max_retries):
+                req = urllib.request.Request(full_url, data=body_bytes, headers=self.headers, method=method.upper())
                 try:
-                    err_json = json.loads(err_body)
-                except Exception:
-                    err_json = err_body
-                return e.code, err_json
-            except Exception as ex:
-                return 500, str(ex)
+                    open_fn = self._opener.open if self._opener else urllib.request.urlopen
+                    with open_fn(req, timeout=15) as response:
+                        status = response.status
+                        resp_body = response.read().decode("utf-8", errors="ignore")
+                        try:
+                            parsed_json = json.loads(resp_body)
+                        except Exception:
+                            parsed_json = resp_body
+                        return status, parsed_json
+                except urllib.error.HTTPError as e:
+                    if e.code == 429 and attempt < max_retries - 1:
+                        # Respect Retry-After header if provided, otherwise exponential backoff
+                        retry_after = e.headers.get("Retry-After")
+                        sleep_time = float(retry_after) if retry_after else (1.5 * (attempt + 1))
+                        time.sleep(sleep_time)
+                        continue
+
+                    err_body = e.read().decode("utf-8", errors="ignore")
+                    try:
+                        err_json = json.loads(err_body)
+                    except Exception:
+                        err_json = err_body
+                    return e.code, err_json
+                except Exception as ex:
+                    return 500, str(ex)
+
+            return 500, "Max retries exceeded"
 
         return await asyncio.to_thread(_sync_req)
 
@@ -297,12 +316,53 @@ class ClickUpService:
 
         return tasks
 
-    async def get_task_comments(self, task_id: str) -> list[dict[str, Any]]:
+    async def get_comment_replies(self, comment_id: str) -> list[dict[str, Any]]:
+        """Fetch threaded replies for a specific comment."""
+        url = f"{self.base_url}/comment/{comment_id}/reply"
+        status, data = await self._http_request("GET", url)
+        if status != 200 or not isinstance(data, dict):
+            return []
+        return data.get("comments", []) or []
+
+    async def get_task_comments(self, task_id: str, include_replies: bool = True) -> list[dict[str, Any]]:
         url = f"{self.base_url}/task/{task_id}/comment"
         status, data = await self._http_request("GET", url)
         if status != 200 or not isinstance(data, dict):
             return []
-        return data.get("comments", [])
+        comments = data.get("comments", []) or []
+        if not include_replies or not comments:
+            return comments
+
+        # Fetch threaded replies for comments in parallel
+        async def _fetch_with_replies(comment: dict[str, Any]) -> list[dict[str, Any]]:
+            cid = comment.get("id")
+            items = [comment]
+            if cid:
+                try:
+                    replies = await self.get_comment_replies(cid)
+                    for r in replies:
+                        r["parent_id"] = cid
+                        items.append(r)
+                except Exception:
+                    pass
+            return items
+
+        results = await asyncio.gather(*[_fetch_with_replies(c) for c in comments], return_exceptions=True)
+        all_comments: list[dict[str, Any]] = []
+        for res in results:
+            if isinstance(res, list):
+                all_comments.extend(res)
+
+        # Sort chronologically by date
+        def _get_ts(item: dict[str, Any]) -> int:
+            d = item.get("date")
+            try:
+                return int(d) if d is not None else 0
+            except (ValueError, TypeError):
+                return 0
+
+        all_comments.sort(key=_get_ts)
+        return all_comments
 
     async def post_comment(self, task_id: str, comment_text: str, notify_all: bool = False) -> bool:
         url = f"{self.base_url}/task/{task_id}/comment"
@@ -787,6 +847,22 @@ class ClickUpService:
                     options = type_config.get("options", [])
                     opt_map = {opt.get("id"): opt.get("label", opt.get("name", "")) for opt in options if "id" in opt}
                     display_val = [opt_map.get(v, v) for v in cf_val]
+                elif cf_type == "users" and isinstance(cf_val, list):
+                    user_names = [u.get("username") for u in cf_val if isinstance(u, dict) and u.get("username")]
+                    display_val = "، ".join(user_names) if user_names else "کاربر"
+                elif cf_name.strip().lower() == "task age" or (cf_type == "formula" and "age" in cf_name.lower()):
+                    # ClickUp's formula field DAYS(TODAY(), TASK_CREATED) often returns inverted or buggy negative values.
+                    # Compute real task age accurately from task date_created
+                    cr_ts = data.get("date_created")
+                    if cr_ts:
+                        try:
+                            import time
+                            age_days = int((time.time() - (int(cr_ts) / 1000.0)) / 86400.0)
+                            display_val = f"{age_days} روز"
+                        except Exception:
+                            display_val = str(cf_val)
+                    else:
+                        display_val = str(cf_val)
                 elif isinstance(cf_val, dict) and "url" in cf_val:
                     display_val = cf_val["url"]
                 else:
@@ -836,6 +912,8 @@ class ClickUpService:
             "creator": creator_info,
             "date_created": data.get("date_created"),
             "date_updated": data.get("date_updated"),
+            "date_closed": data.get("date_closed"),
+            "date_done": data.get("date_done"),
             "due_date": data.get("due_date"),
             "url": data.get("url") or f"https://app.clickup.com/t/{task_id}",
             "repo_url": repo_url,
@@ -870,11 +948,18 @@ class ClickUpService:
             if st in excluded_statuses:
                 continue
             tasks.append(self.format_task_dict(raw))
+
         return tasks
 
-    async def get_sre_form_tasks(self, team_id: Optional[str] = None) -> list[dict[str, Any]]:
+    async def get_sre_form_tasks(
+        self,
+        team_id: Optional[str] = None,
+        include_closed: bool = False,
+        updated_gt: Optional[int] = None
+    ) -> list[dict[str, Any]]:
         """
-        Fetches all open tasks from the SRE space Form folder / form response lists.
+        Fetches tasks from the SRE space Form folder / form response lists.
+        If include_closed is True, closed/done tasks are included.
         """
         target_team = team_id or settings.CLICKUP_TEAM_ID
         if not target_team:
@@ -914,16 +999,18 @@ class ClickUpService:
 
         all_tasks = []
         seen_ids = set()
-        excluded_statuses = {"closed", "done", "complete", "completed", "ready to test"}
+        excluded_statuses = set() if include_closed else {"closed", "done", "complete", "completed", "ready to test"}
 
         async def fetch_list_tasks(lid: str):
             url = f"{self.base_url}/list/{lid}/task"
-            params = {
-                "include_closed": "false",
+            params: dict[str, Any] = {
+                "include_closed": "true" if include_closed else "false",
                 "subtasks": "true",
-                "order_by": "created",
-                "reverse": "true"
+                "order_by": "updated" if include_closed else "created",
+                "reverse": "false" if include_closed else "true"
             }
+            if updated_gt is not None:
+                params["date_updated_gt"] = str(updated_gt)
             s, d = await self._http_request("GET", url, params=params)
             if s == 200 and isinstance(d, dict):
                 return d.get("tasks", [])
@@ -957,6 +1044,7 @@ class ClickUpService:
             u = c.get("user") or {}
             formatted_comments.append({
                 "id": c.get("id"),
+                "parent_id": c.get("parent_id"),
                 "text": c.get("comment_text", ""),
                 "date": c.get("date"),
                 "user": {
@@ -969,6 +1057,10 @@ class ClickUpService:
             })
 
         formatted["comments"] = formatted_comments
+        formatted["comments_count"] = len(formatted_comments)
+        valid_dates = [int(c["date"]) for c in formatted_comments if c.get("date")]
+        if valid_dates:
+            formatted["latest_comment_date"] = max(valid_dates)
         return formatted
 
     async def get_sre_analytics_data(self, team_id: Optional[str] = None) -> dict[str, Any]:
@@ -1019,11 +1111,10 @@ class ClickUpService:
         ]
 
         def normalize_name(name: str) -> str:
-            return (name or "").lower().strip()
+            n = (name or "").lower().strip()
+            return n
 
         def is_target_member(name: str) -> bool:
-            if not TARGET_MEMBERS:
-                return True
             norm = normalize_name(name)
             for tm in TARGET_MEMBERS:
                 tm_norm = normalize_name(tm)
@@ -1032,7 +1123,7 @@ class ClickUpService:
             return False
 
         # 3. Concurrently fetch closed & updated tasks for each target member
-        # (Fetching each member individually ensures full historical depth of tasks for every person)
+        # (Order by updated descending to immediately capture recently closed/moved tasks)
         one_year_ago_ms = (now_ts - 375 * 86400.0) * 1000.0
 
         async def fetch_member_history(uid: str):
@@ -1042,6 +1133,8 @@ class ClickUpService:
                     "assignees[]": [uid],
                     "include_closed": "true",
                     "subtasks": "true",
+                    "order_by": "updated",
+                    "reverse": "false",
                     "page": page
                 }
                 u = f"{self.base_url}/team/{target_team}/task"
@@ -1058,8 +1151,12 @@ class ClickUpService:
                     break
             return member_tasks
 
+        # Also fetch recently closed tasks from all SRE form lists (covers unassigned closed tasks as well)
+        fourteen_days_ago_ms = int((now_ts - 14 * 86400.0) * 1000.0)
+
         results = await asyncio.gather(
             *(fetch_member_history(uid) for uid in TARGET_MEMBER_IDS),
+            self.get_sre_form_tasks(team_id=target_team, include_closed=True, updated_gt=fourteen_days_ago_ms),
             return_exceptions=True
         )
 
@@ -1069,7 +1166,11 @@ class ClickUpService:
                 for rt in res_list:
                     tid = str(rt.get("id"))
                     if tid not in all_unique_tasks:
-                        all_unique_tasks[tid] = self.format_task_dict(rt)
+                        # If rt is already formatted (from get_sre_form_tasks) or raw dict
+                        if "custom_fields" in rt and "status_color" in rt:
+                            all_unique_tasks[tid] = rt
+                        else:
+                            all_unique_tasks[tid] = self.format_task_dict(rt)
 
         # =====================================================================
         # Metric 1: Donut Chart - Assignee Distribution (Open Tasks)
@@ -1226,17 +1327,27 @@ class ClickUpService:
 
         for t in all_unique_tasks.values():
             st = (t.get("status") or "").lower().strip()
-            up_ms = t.get("date_updated") or t.get("date_created")
-            if not up_ms:
+            is_closed = st in ["closed", "done", "complete", "completed"]
+            is_ready_to_test = "ready to test" in st
+            if not is_closed and not is_ready_to_test:
+                continue
+
+            # For closed tasks, prioritize date_closed or date_done, fallback to date_updated
+            if is_closed:
+                action_ms = t.get("date_closed") or t.get("date_done") or t.get("date_updated") or t.get("date_created")
+            else:
+                action_ms = t.get("date_done") or t.get("date_updated") or t.get("date_created")
+
+            if not action_ms:
                 continue
             try:
-                task_dt = datetime.datetime.fromtimestamp(int(up_ms) / 1000.0, tz=datetime.timezone.utc).date()
+                task_dt = datetime.datetime.fromtimestamp(int(action_ms) / 1000.0, tz=datetime.timezone.utc).date()
                 d_key = task_dt.strftime("%Y-%m-%d")
                 if d_key in past_7_days_map:
-                    if st in ["closed", "done", "complete", "completed"]:
+                    if is_closed:
                         past_7_days_map[d_key]["closed"] += 1
                         past_7_days_map[d_key]["total"] += 1
-                    elif "ready to test" in st:
+                    elif is_ready_to_test:
                         past_7_days_map[d_key]["ready_to_test"] += 1
                         past_7_days_map[d_key]["total"] += 1
             except Exception:

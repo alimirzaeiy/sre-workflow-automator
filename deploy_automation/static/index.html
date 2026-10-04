@@ -56,16 +56,22 @@
 
                 <!-- Actions & User Profile -->
                 <div class="header-actions">
-                    <button class="glass-btn btn-refresh" id="refreshBtn" onclick="refreshData(true)" title="بروزرسانی داده‌ها">
-                        <i data-lucide="refresh-cw" id="refreshIcon"></i>
-                        <span>بروزرسانی</span>
-                    </button>
-
-                    <div class="user-pill" id="userPill">
-                        <div class="user-avatar" id="userAvatar">U</div>
+                    <div class="user-pill member-picker-pill" id="userPill" onclick="toggleDevopsDropdown(event)">
+                        <div class="user-avatar" id="userAvatar">SRE</div>
                         <div class="user-meta">
-                            <span class="user-name" id="userName">در حال بارگذاری...</span>
-                            <span class="user-role">مهندس SRE</span>
+                            <div class="member-select-label">
+                                <span class="selected-member-name" id="selectedMemberName">انتخاب عضو تیم</span>
+                                <i data-lucide="chevron-down" class="member-select-arrow" id="memberDropdownArrow"></i>
+                            </div>
+                            <span class="user-role" id="userRole">مهندس DevOps / SRE</span>
+                        </div>
+
+                        <!-- Custom Glass Dropdown Menu -->
+                        <div class="devops-dropdown-menu" id="devopsDropdownMenu" style="display: none;">
+                            <div class="devops-dropdown-header">انتخاب عضو تیم دواپس</div>
+                            <div class="devops-dropdown-list" id="devopsDropdownList">
+                                <!-- Populated dynamically by app.js -->
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -422,6 +428,6 @@
         <span id="toastMessage">عملیات با موفقیت انجام شد</span>
     </div>
 
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=2.1"></script>
 </body>
 </html>

@@ -1,3 +1,4 @@
+import os
 import logging
 from typing import Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -22,14 +23,19 @@ logger = logging.getLogger(__name__)
 
 
 class TelegramService:
-    def __init__(self, token: str = settings.TELEGRAM_BOT_TOKEN, admin_chat_id: int = settings.TELEGRAM_ADMIN_CHAT_ID):
+    def __init__(self, token: str = settings.TELEGRAM_BOT_TOKEN, admin_chat_id: int = settings.TELEGRAM_ADMIN_CHAT_ID, proxy: Optional[str] = None):
         self.token = token
         self.admin_chat_id = admin_chat_id
+        self.proxy = proxy or os.getenv("PROXY") or getattr(settings, "PROXY", None) or os.getenv("HTTPS_PROXY") or getattr(settings, "HTTPS_PROXY", None) or os.getenv("HTTP_PROXY") or getattr(settings, "HTTP_PROXY", None) or os.getenv("ALL_PROXY") or getattr(settings, "ALL_PROXY", None)
         self.clickup_service = ClickUpService()
         self.app: Optional[Application] = None
 
     def build_application(self) -> Application:
-        app = Application.builder().token(self.token).build()
+        builder = Application.builder().token(self.token)
+        if self.proxy:
+            builder.proxy(self.proxy)
+            builder.get_updates_proxy(self.proxy)
+        app = builder.build()
 
         # Handlers
         app.add_handler(CommandHandler("start", self.cmd_start))

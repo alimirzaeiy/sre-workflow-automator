@@ -11,9 +11,14 @@ class AIService:
     Uses conduit/Anthropic-compatible endpoint configured in environment.
     """
 
-    def __init__(self, base_url: Optional[str] = None, auth_token: Optional[str] = None):
+    def __init__(self, base_url: Optional[str] = None, auth_token: Optional[str] = None, proxy: Optional[str] = None):
         self.base_url = (base_url or os.environ.get("ANTHROPIC_BASE_URL", "")).rstrip("/")
         self.auth_token = auth_token or os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+        self.proxy = proxy or os.environ.get("PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or os.environ.get("ALL_PROXY")
+        self._opener = None
+        if self.proxy:
+            proxy_handler = urllib.request.ProxyHandler({"http": self.proxy, "https": self.proxy})
+            self._opener = urllib.request.build_opener(proxy_handler)
         self.candidate_models = [
             "gemini-2.5-flash",
             "gemini-3-flash",
@@ -46,7 +51,8 @@ class AIService:
             try:
                 data = json.dumps(payload).encode("utf-8")
                 req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-                with urllib.request.urlopen(req, timeout=35) as resp:
+                open_fn = self._opener.open if self._opener else urllib.request.urlopen
+                with open_fn(req, timeout=35) as resp:
                     resp_data = json.loads(resp.read().decode("utf-8"))
                     content = resp_data.get("content", [])
                     if content and isinstance(content, list):
@@ -239,34 +245,89 @@ Respond ONLY with a JSON object in this exact schema:
         elif status in ["new", "open"]:
             score += 5
 
-        # 6. Staleness / Lingering in state penalty
-        # Tasks that have stayed in the same state without update for a long time are likely stale/abandoned
-        last_activity_ms = task.get("date_updated") or task.get("date_created")
-        is_severely_stale = False
-        if last_activity_ms:
+        # 6. Task Age & Staleness Evaluation
+        # Differentiates between creation age, update recency, and fresh comment activity
+        date_created_ms = task.get("date_created")
+        date_updated_ms = task.get("date_updated")
+        latest_comment_ms = task.get("latest_comment_date")
+
+        # Fallback if comments list exists in task dict
+        if not latest_comment_ms and isinstance(task.get("comments"), list) and task["comments"]:
+            valid_c_dates = [int(c["date"]) for c in task["comments"] if c.get("date")]
+            if valid_c_dates:
+                latest_comment_ms = max(valid_c_dates)
+
+        now_ts = time.time()
+        days_since_created = None
+        if date_created_ms:
             try:
-                activity_ts = int(last_activity_ms) / 1000.0
-                days_inactive = (time.time() - activity_ts) / (3600.0 * 24.0)
-                if days_inactive > 180:
-                    score -= 50
-                    is_severely_stale = True
-                    reasons.append("راکد بسیار قدیمی (بیش از ۶ ماه بدون تغییر وضعیت)")
-                elif days_inactive > 60:
-                    score -= 40
-                    is_severely_stale = True
-                    reasons.append("راکد (بیش از ۲ ماه بدون تغییر وضعیت)")
-                elif days_inactive > 30:
-                    score -= 25
-                    reasons.append("کم‌اثر (بیش از ۱ ماه بدون تغییر وضعیت)")
-                elif days_inactive > 14:
-                    score -= 12
-                    reasons.append("عدم به‌روزرسانی در ۲ هفته اخیر")
-                elif days_inactive <= 3:
-                    # Recently updated / actively being moved
-                    score += 5
-                    reasons.append("به‌روزرسانی اخیر (فعال)")
+                days_since_created = (now_ts - (int(date_created_ms) / 1000.0)) / (3600.0 * 24.0)
             except Exception:
                 pass
+
+        days_since_updated = None
+        if date_updated_ms:
+            try:
+                days_since_updated = (now_ts - (int(date_updated_ms) / 1000.0)) / (3600.0 * 24.0)
+            except Exception:
+                pass
+
+        days_since_comment = None
+        if latest_comment_ms:
+            try:
+                days_since_comment = (now_ts - (int(latest_comment_ms) / 1000.0)) / (3600.0 * 24.0)
+            except Exception:
+                pass
+
+        # Check if task is old (created more than 20 days ago)
+        is_old_task = days_since_created is not None and days_since_created > 20
+        # Check if there is fresh comment activity (comment within last 7 days)
+        has_recent_comment = days_since_comment is not None and days_since_comment <= 7
+        # Severe staleness: no update or comment for a very long time
+        effective_activity_ms = latest_comment_ms or date_updated_ms or date_created_ms
+        effective_activity_days = (now_ts - (int(effective_activity_ms) / 1000.0)) / (3600.0 * 24.0) if effective_activity_ms else 0
+
+        is_severely_stale = False
+        is_old_without_new_comments = False
+
+        if is_old_task:
+            if has_recent_comment:
+                # Old task that is currently active because of new comments
+                score += 10
+                reasons.append(f"تسک با سابقه ({int(days_since_created)} روز) همراه با کامنت و پیگیری جدید")
+            else:
+                # Old task with NO new comments: minor updates do not make it critical/urgent!
+                is_old_without_new_comments = True
+                if days_since_created > 90:
+                    score -= 30
+                    reasons.append(f"عمر تسک بالا ({int(days_since_created)} روز پیش) بدون کامنت جدید")
+                elif days_since_created > 45:
+                    score -= 20
+                    reasons.append(f"تسک قدیمی ({int(days_since_created)} روز پیش) بدون کامنت جدید")
+                else:
+                    score -= 15
+                    reasons.append(f"تسک بیش از ۲ هفته پیش ایجاد شده ({int(days_since_created)} روز) بدون کامنت جدید")
+        else:
+            # Newer task
+            if days_since_created is not None and days_since_created <= 3:
+                score += 10
+                reasons.append("تسک تازه ثبت‌شده (زیر ۳ روز)")
+            elif days_since_updated is not None and days_since_updated <= 3:
+                score += 5
+                reasons.append("به‌روزرسانی اخیر (فعال)")
+
+        # Penalize if entirely inactive without any update or comment
+        if effective_activity_days > 180:
+            score -= 40
+            is_severely_stale = True
+            reasons.append("راکد بسیار قدیمی (بیش از ۶ ماه بدون تغییر وضعیت یا کامنت)")
+        elif effective_activity_days > 60:
+            score -= 30
+            is_severely_stale = True
+            reasons.append("راکد (بیش از ۲ ماه بدون تغییر وضعیت یا کامنت)")
+        elif effective_activity_days > 30:
+            score -= 15
+            reasons.append("کم‌اثر (بیش از ۱ ماه بدون فعالیت)")
 
         # 7. Due date / Deadlines
         due_date = task.get("due_date")
@@ -291,9 +352,12 @@ Respond ONLY with a JSON object in this exact schema:
             except Exception:
                 pass
 
-        # Cap score for severely stale tasks (cannot be critical or high)
+        # Cap scores based on staleness and age rules
         if is_severely_stale:
             score = min(40, score)
+        elif is_old_without_new_comments:
+            # Old tasks without recent comments can NEVER be CRITICAL or HIGH; capped at 60 (MEDIUM)
+            score = min(60, score)
 
         # Normalize score between 10 and 99
         score = max(10, min(99, score))
@@ -345,17 +409,31 @@ Respond ONLY with a JSON object in this exact schema:
                 compact_tasks = []
                 now_ts = time.time()
                 for t in tasks[:15]:
-                    last_act = t.get("date_updated") or t.get("date_created")
-                    days_idle = round((now_ts - int(last_act)/1000)/(3600*24), 1) if last_act else None
+                    date_cr = t.get("date_created")
+                    date_up = t.get("date_updated")
+                    latest_c = t.get("latest_comment_date")
+                    days_created = round((now_ts - int(date_cr)/1000)/(3600*24), 1) if date_cr else None
+                    days_updated = round((now_ts - int(date_up)/1000)/(3600*24), 1) if date_up else None
+                    days_comment = round((now_ts - int(latest_c)/1000)/(3600*24), 1) if latest_c else None
                     compact_tasks.append({
                         "id": str(t["id"]),
                         "name": t.get("name", ""),
                         "form": t.get("form_name", ""),
                         "status": t.get("status", ""),
                         "env": t.get("environment", ""),
-                        "days_in_state_without_update": days_idle
+                        "days_since_created": days_created,
+                        "days_since_updated": days_updated,
+                        "days_since_latest_comment": days_comment,
+                        "comments_count": t.get("comments_count", 0)
                     })
-                sys_prompt = "You are an SRE AI priority expert. If a task has been lingering without update for weeks or months (high days_in_state_without_update), it is stale and its priority MUST be lowered significantly (LOW or MEDIUM). Output JSON array of objects with id, priority_score (1-100), urgency_level (CRITICAL/HIGH/MEDIUM/LOW), and ai_reasoning in Persian."
+                sys_prompt = (
+                    "You are an SRE AI priority expert. Rules: "
+                    "1. If a task was created a long time ago (high days_since_created, e.g. >20-30 days), "
+                    "a recent minor update (low days_since_updated) DOES NOT make it urgent or critical. "
+                    "2. Old tasks should only have high priority IF they have a recent comment (days_since_latest_comment <= 7). "
+                    "Otherwise, cap old tasks at MEDIUM or LOW. "
+                    "Output JSON array of objects with id, priority_score (1-100), urgency_level (CRITICAL/HIGH/MEDIUM/LOW), and ai_reasoning in Persian."
+                )
                 user_prompt = f"Adjust priorities for these tasks:\n{json.dumps(compact_tasks, ensure_ascii=False)}"
                 llm_resp = self._call_llm(user_prompt, system_prompt=sys_prompt)
                 if llm_resp:

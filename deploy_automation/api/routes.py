@@ -177,7 +177,7 @@ ai_service = AIService()
 
 # Simple cache for fast responsiveness
 _dashboard_cache: dict[str, Any] = {
-    "my_tasks": {"data": None, "timestamp": 0},
+    "my_tasks": {},  # key: user_id or "default" -> {"data": ..., "timestamp": ...}
     "sre_form_tasks": {"data": None, "timestamp": 0}
 }
 CACHE_TTL = 90  # seconds
@@ -186,6 +186,54 @@ CACHE_TTL = 90  # seconds
 class CommentCreateRequest(BaseModel):
     comment_text: str
     notify_all: bool = False
+
+
+# Known DevOps / SRE team members list (dynamically loaded or generic template)
+def _get_configured_team_members():
+    import json
+    try:
+        if settings.SRE_TEAM_MEMBERS:
+            items = json.loads(settings.SRE_TEAM_MEMBERS)
+            members = []
+            for it in items:
+                name = it.get("name", "Team Member")
+                parts = name.split()
+                initials = "".join([p[0].upper() for p in parts[:2]]) if parts else "TM"
+                members.append({
+                    "id": it.get("clickup_id", 1001),
+                    "username": name,
+                    "email": it.get("email", ""),
+                    "initials": initials,
+                    "color": "#6366f1",
+                    "profile_picture": None,
+                    "role": "DevOps Engineer"
+                })
+            if members:
+                return members
+    except Exception:
+        pass
+    return [
+        {
+            "id": 1001,
+            "username": "Alice Developer",
+            "email": "alice@example.com",
+            "initials": "AD",
+            "color": "#6366f1",
+            "profile_picture": None,
+            "role": "DevOps Engineer"
+        },
+        {
+            "id": 1002,
+            "username": "Bob Engineer",
+            "email": "bob@example.com",
+            "initials": "BE",
+            "color": "#06b6d4",
+            "profile_picture": None,
+            "role": "DevOps Engineer"
+        }
+    ]
+
+DEVOPS_TEAM_MEMBERS = _get_configured_team_members()
 
 
 @router.get("/api/me")
@@ -197,18 +245,25 @@ async def get_current_user_info():
     return profile
 
 
+@router.get("/api/team/members")
+async def get_devops_members():
+    """Returns the list of DevOps / SRE team members."""
+    return {"members": DEVOPS_TEAM_MEMBERS}
+
+
 @router.get("/api/tasks/my")
-async def get_my_tasks(refresh: bool = False):
+async def get_my_tasks(user_id: Optional[int] = None, refresh: bool = False):
     """
-    Returns tasks assigned to the current user, categorized by state (status)
-    and prioritized by AI.
+    Returns tasks assigned to the specified user (or current user if omitted),
+    categorized by state (status) and prioritized by AI.
     """
     now = time.time()
-    cache_entry = _dashboard_cache["my_tasks"]
-    if not refresh and cache_entry["data"] and (now - cache_entry["timestamp"] < CACHE_TTL):
+    cache_key = str(user_id) if user_id else "default"
+    cache_entry = _dashboard_cache["my_tasks"].get(cache_key)
+    if not refresh and cache_entry and cache_entry["data"] and (now - cache_entry["timestamp"] < CACHE_TTL):
         return cache_entry["data"]
 
-    tasks = await clickup_service.get_user_assigned_tasks()
+    tasks = await clickup_service.get_user_assigned_tasks(user_id=user_id)
     tasks = [t for t in tasks if (t.get("status") or "").lower().strip() not in ["ready to test", "closed", "done"]]
     ranked_tasks = ai_service.prioritize_tasks(tasks)
 
@@ -248,6 +303,7 @@ async def get_my_tasks(refresh: bool = False):
     groups = sorted(state_map.values(), key=state_sort_key)
 
     response_data = {
+        "user_id": user_id,
         "total_tasks": len(ranked_tasks),
         "critical_count": critical_count,
         "high_count": high_count,
@@ -255,7 +311,9 @@ async def get_my_tasks(refresh: bool = False):
         "cached_at": now
     }
 
-    _dashboard_cache["my_tasks"] = {"data": response_data, "timestamp": now}
+    # Only cache non-empty results so an API issue or temporary empty result isn't stuck for CACHE_TTL
+    if len(ranked_tasks) > 0:
+        _dashboard_cache["my_tasks"][cache_key] = {"data": response_data, "timestamp": now}
     return response_data
 
 

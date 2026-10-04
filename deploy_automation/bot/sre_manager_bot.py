@@ -44,15 +44,21 @@ class SREManagerBot:
         self,
         token: str = settings.TELEGRAM_BOT_TOKEN,
         clickup_service: Optional[ClickUpService] = None,
-        ai_provider: Optional[AIServiceProvider] = None
+        ai_provider: Optional[AIServiceProvider] = None,
+        proxy: Optional[str] = None
     ):
         self.token = token
+        self.proxy = proxy or os.getenv("PROXY") or getattr(settings, "PROXY", None) or os.getenv("HTTPS_PROXY") or getattr(settings, "HTTPS_PROXY", None) or os.getenv("HTTP_PROXY") or getattr(settings, "HTTP_PROXY", None) or os.getenv("ALL_PROXY") or getattr(settings, "ALL_PROXY", None)
         self.clickup = clickup_service or ClickUpService()
         self.ai = ai_provider or AIServiceProvider()
         self.app: Optional[Application] = None
 
     def build_application(self) -> Application:
-        app = Application.builder().token(self.token).build()
+        builder = Application.builder().token(self.token)
+        if self.proxy:
+            builder.proxy(self.proxy)
+            builder.get_updates_proxy(self.proxy)
+        app = builder.build()
 
         app.add_handler(CommandHandler("start", self.cmd_start))
         app.add_handler(CommandHandler("help", self.cmd_help))
@@ -495,14 +501,9 @@ class SREManagerBot:
             except Exception:
                 pass
 
-            # 1. Remove from ClickUp assignees
-            if withdrawer_clickup_id:
-                removed = await self.clickup.remove_user_from_task_assignees(task_id, int(withdrawer_clickup_id))
-                logger.info(f"Removed clickup user {withdrawer_clickup_id} ({withdrawer_name}) from task {task_id}: {removed}")
-            else:
-                logger.warning(f"Could not resolve ClickUp ID for tg user {withdrawing_tg_id} — skipping ClickUp removal")
+            # Note: Do NOT touch ClickUp assignees. Only remove from Telegram options.
 
-            # 2. Rebuild keyboard: filter out any button whose callback_data references this withdrawer
+            # 1. Rebuild keyboard: filter out any button whose callback_data references this withdrawer
             # (both the primary confirm button and any alternative member button)
             new_keyboard = []
             if query.message and query.message.reply_markup:
@@ -518,7 +519,7 @@ class SREManagerBot:
                         new_keyboard.append(new_row)
             new_markup = InlineKeyboardMarkup(new_keyboard) if new_keyboard else None
 
-            # 3. Build updated text — preserve HTML by using text_html attribute
+            # 2. Build updated text — preserve HTML by using text_html attribute
             original_html = ""
             if query.message:
                 try:
@@ -528,7 +529,7 @@ class SREManagerBot:
 
             withdraw_suffix = (
                 f"\n\n━━━━━━━━━━━━━━━━━━━━\n"
-                f"🚫 <b>{withdrawer_name} از این تسک انصراف داد و از لیست اساین‌ها حذف شد.</b>"
+                f"🚫 <b>{withdrawer_name} از این تسک انصراف داد و از گزینه‌های تلگرام حذف شد.</b>"
             )
             new_text = f"{original_html}{withdraw_suffix}"
 
@@ -564,7 +565,7 @@ class SREManagerBot:
             except Exception as e:
                 logger.warning(f"Error syncing withdraw proposal messages: {e}")
 
-            await query.answer("✅ انصراف شما ثبت شد و از لیست اساین‌ها حذف شدید.")
+            await query.answer("✅ انصراف شما ثبت شد و دکمه شما از پیام تلگرام حذف گردید.")
             return
 
 
@@ -870,7 +871,7 @@ class SREManagerBot:
         await self.app.bot.edit_message_text(
             chat_id=chat_id,
             message_id=status_msg_id,
-            text="✅ دسترسی Maintainer تایید شد.\n📥 در حال بررسی ساختار مخزن و الزامات استقرار..."
+            text="✅ دسترسی Maintainer تایید شد.\n📥 در حال بررسی ساختار مخزن و الزامات ۹‌گانه استقرار Git Flow پالیز..."
         )
 
         project = await gl.get_project(repo_url)
@@ -889,9 +890,9 @@ class SREManagerBot:
                 chat_id=chat_id,
                 message_id=status_msg_id,
                 text=(
-                    f"🎉 <b>کلیه الزامات استقرار رعایت شده است!</b>\n\n"
+                    f"🎉 <b>کلیه الزامات ۹‌گانه استقرار رعایت شده است!</b>\n\n"
                     f"پروژه: <code>{project_name}</code>\n"
-                    f"تمام موارد چک‌لیست استقرار تایید گردید.\n"
+                    f"تمام موارد سند Git Flow و چک‌لیست استقرار Production تایید گردید.\n"
                     f"اکنون می‌توانید مراحل دیپلوی سرویس را ادامه دهید."
                 ),
                 parse_mode="HTML"

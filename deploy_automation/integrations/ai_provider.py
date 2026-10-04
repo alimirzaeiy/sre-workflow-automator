@@ -21,7 +21,8 @@ class AIServiceProvider:
         openai_model: Optional[str] = None,
         anthropic_base_url: Optional[str] = None,
         anthropic_api_key: Optional[str] = None,
-        anthropic_model: Optional[str] = None
+        anthropic_model: Optional[str] = None,
+        proxy: Optional[str] = None
     ):
         self.provider = (provider or os.getenv("AI_PROVIDER") or getattr(settings, "AI_PROVIDER", "openai")).lower()
         self.openai_base_url = (openai_base_url or os.getenv("OPENAI_BASE_URL") or getattr(settings, "OPENAI_BASE_URL", "https://api.openai.com/v1")).rstrip("/")
@@ -31,6 +32,17 @@ class AIServiceProvider:
         self.anthropic_base_url = (anthropic_base_url or os.getenv("ANTHROPIC_BASE_URL") or getattr(settings, "ANTHROPIC_BASE_URL", "https://api.anthropic.com")).rstrip("/")
         self.anthropic_api_key = anthropic_api_key or os.getenv("ANTHROPIC_AUTH_TOKEN") or os.getenv("ANTHROPIC_API_KEY") or getattr(settings, "ANTHROPIC_API_KEY", "")
         self.anthropic_model = anthropic_model or os.getenv("ANTHROPIC_MODEL") or getattr(settings, "ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
+
+        self.proxy = proxy or os.getenv("PROXY") or getattr(settings, "PROXY", None) or os.getenv("HTTPS_PROXY") or getattr(settings, "HTTPS_PROXY", None) or os.getenv("HTTP_PROXY") or getattr(settings, "HTTP_PROXY", None) or os.getenv("ALL_PROXY") or getattr(settings, "ALL_PROXY", None)
+        self._opener = None
+        if self.proxy:
+            proxy_handler = urllib.request.ProxyHandler({"http": self.proxy, "https": self.proxy})
+            self._opener = urllib.request.build_opener(proxy_handler)
+
+    def _open_url(self, req: urllib.request.Request, timeout: int = 30):
+        if self._opener:
+            return self._opener.open(req, timeout=timeout)
+        return urllib.request.urlopen(req, timeout=timeout)
 
     def call_llm(self, prompt: str, system_prompt: Optional[str] = None) -> Optional[str]:
         """Routes call based on configured AI provider with fallback."""
@@ -71,7 +83,7 @@ class AIServiceProvider:
         try:
             data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with self._open_url(req, timeout=30) as resp:
                 resp_json = json.loads(resp.read().decode("utf-8"))
                 choices = resp_json.get("choices", [])
                 if choices:
@@ -100,7 +112,7 @@ class AIServiceProvider:
         try:
             data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with self._open_url(req, timeout=30) as resp:
                 resp_json = json.loads(resp.read().decode("utf-8"))
                 content = resp_json.get("content", [])
                 if content and isinstance(content, list):
@@ -201,7 +213,7 @@ Do not include markdown blocks or any other text outside the JSON.
     ) -> str:
         """
         Generates a professional Persian comment explaining missing deployment requirements
-        based on project readiness standards.
+        based on the organizational 9-point deployment readiness standards.
         """
         if not failed_checks:
             return "کلیه الزامات استقرار مطابق با استانداردهای تعریف‌شده بررسی و تایید شد."

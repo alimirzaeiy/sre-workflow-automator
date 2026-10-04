@@ -36,9 +36,10 @@ ASSIGNED → TOKEN_REQUESTED → ACCESS_CHECKING →
        COMMENT_CONFIRMED → IN_PROGRESS / WAITING_FOR_CUSTOMER
 ```
 
-**Key methods:**
+**Key methods & properties:**
 ```python
-build_application() -> Application          # registers all handlers, sets self.app
+SREManagerBot(token=..., clickup_service=..., ai_provider=..., proxy=...) # reads PROXY / HTTPS_PROXY
+build_application() -> Application          # registers all handlers, configures proxy/get_updates_proxy, sets self.app
 notify_task_dispatched(task, member, reason, msg_thread_id)  # sends proposal to topic
 ```
 
@@ -46,7 +47,7 @@ notify_task_dispatched(task, member, reason, msg_thread_id)  # sends proposal to
 - `ClickUpService` — fetch tasks, post comments, change status
 - `GitLabService` — check maintainer access
 - `AIServiceProvider` — generate deployment readiness comment text
-- `DeployRequirementsChecker` — run readiness check
+- `DeployRequirementsChecker` — run 9-point check
 - `InMemoryTokenStore` — collect & retrieve GitLab token from user
 - `database` — `save_task_conversation_state`, `get_task_conversation_state`, `get_user_active_conversations`, `save_task_proposal_message`, `get_task_proposal_messages`
 - `config_canned_responses` — CANNED_CLOSE_RESPONSES dict
@@ -80,7 +81,7 @@ handle_user_message(update, context)# processes free-text edits
 |---|---|
 | `flow:confirm_assign:{tid}:{c_uid}` | Confirm task assignment to a member |
 | `flow:reject_assign:{tid}` | Reject proposal (no assignment) |
-| `flow:withdraw_assign:{tid}` | **Opt-out**: resolve telegram_id→clickup_id, call `remove_user_from_task_assignees()`, sync all proposal chats |
+| `flow:withdraw_assign:{tid}` | **Opt-out**: resolve telegram_id→clickup_id, remove user's button from Telegram proposal, sync all proposal chats (does NOT touch ClickUp assignees) |
 | `flow:start_in_progress:{tid}` | Mark task in-progress in ClickUp |
 | `flow:choose_close:{tid}` | Show close options |
 | `flow:canned_select:{tid}:{key}` | Select a canned close response |

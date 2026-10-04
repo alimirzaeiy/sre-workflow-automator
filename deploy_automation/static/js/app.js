@@ -7,6 +7,8 @@
 const state = {
     activeTab: 'myTasks',
     user: null,
+    teamMembers: [],
+    selectedMemberId: null,
     myTasksData: null,
     sreTasksData: null,
     analyticsData: null,
@@ -24,27 +26,49 @@ const state = {
     }
 };
 
+const DEFAULT_DEVOPS_MEMBERS = [
+    {
+        id: 1001,
+        username: "Alice Developer",
+        email: "alice@example.com",
+        initials: "AD",
+        color: "#6366f1",
+        profile_picture: null,
+        role: "DevOps Engineer"
+    },
+    {
+        id: 1002,
+        username: "Bob Engineer",
+        email: "bob@example.com",
+        initials: "BE",
+        color: "#06b6d4",
+        profile_picture: null,
+        role: "DevOps Engineer"
+    }
+];
+
 // DOM Content Loaded Entrypoint
 document.addEventListener('DOMContentLoaded', async () => {
     initLucide();
+    state.teamMembers = DEFAULT_DEVOPS_MEMBERS;
+    populateDevopsMemberSelect();
     await loadUserProfile();
+    await loadDevopsMembers();
     await refreshData(false);
 
-    // Check URL parameters for tab switching or opening task modal
-    const urlParams = new URLSearchParams(window.location.search);
-    const tabParam = urlParams.get('tab');
-    if (tabParam && ['myTasks', 'sreForms', 'analytics'].includes(tabParam)) {
-        switchTab(tabParam);
-    }
-    const taskIdParam = urlParams.get('task_id');
-    if (taskIdParam) {
-        setTimeout(() => openTaskModal(taskIdParam), 300);
-    }
+    // Global click listener to close devops dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        const pill = document.getElementById('userPill');
+        if (pill && !pill.contains(e.target)) {
+            closeDevopsDropdown();
+        }
+    });
 
-    // Keyboard shortcut: Esc to close modal
+    // Keyboard shortcut: Esc to close modal & dropdown
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeTaskModal();
+            closeDevopsDropdown();
         }
     });
 });
@@ -113,24 +137,216 @@ async function loadUserProfile() {
         const res = await fetch('/api/me');
         if (res.ok) {
             state.user = await res.json();
-            renderUserProfile(state.user);
         }
     } catch (err) {
         console.error('Error loading user profile:', err);
     }
 }
 
-function renderUserProfile(user) {
-    const avatarEl = document.getElementById('userAvatar');
-    const nameEl = document.getElementById('userName');
+async function loadDevopsMembers() {
+    try {
+        const res = await fetch('/api/team/members');
+        if (res.ok) {
+            const data = await res.json();
+            state.teamMembers = data.members || [];
+            populateDevopsMemberSelect();
+        }
+    } catch (err) {
+        console.error('Error loading DevOps members:', err);
+    }
+}
 
-    if (nameEl) nameEl.textContent = user.username || 'مهندس SRE';
-    if (avatarEl) {
-        if (user.profile_picture) {
-            avatarEl.innerHTML = `<img src="${escapeHtml(user.profile_picture)}" alt="${escapeHtml(user.username)}">`;
+function populateDevopsMemberSelect() {
+    const listEl = document.getElementById('devopsDropdownList');
+    if (!state.teamMembers.length) return;
+
+    // If current user is one of the members, default to them; otherwise default to the first member
+    let defaultId = state.selectedMemberId;
+    if (!defaultId) {
+        const currentInTeam = state.user && state.teamMembers.find(m => m.id === state.user.id);
+        if (currentInTeam) {
+            defaultId = currentInTeam.id;
         } else {
-            avatarEl.textContent = user.initials || 'SRE';
-            if (user.color) avatarEl.style.backgroundColor = user.color;
+            defaultId = state.teamMembers[0].id;
+        }
+        state.selectedMemberId = defaultId;
+    }
+
+    if (listEl) {
+        listEl.innerHTML = '';
+        state.teamMembers.forEach(member => {
+            const isSelected = member.id === defaultId;
+            const item = document.createElement('div');
+            item.className = `devops-dropdown-item ${isSelected ? 'active' : ''}`;
+            item.onclick = (e) => {
+                e.stopPropagation();
+                selectDevopsMember(member.id);
+            };
+
+            const avatarMarkup = member.profile_picture
+                ? `<img src="${escapeHtml(member.profile_picture)}" alt="${escapeHtml(member.username)}">`
+                : (member.initials || 'SRE');
+            const avatarBg = (!member.profile_picture && member.color) ? `style="background-color: ${member.color}"` : '';
+
+            item.innerHTML = `
+                <div class="item-avatar" ${avatarBg}>${avatarMarkup}</div>
+                <div class="item-info">
+                    <span class="item-name">${escapeHtml(member.username)}</span>
+                    <span class="item-role">${escapeHtml(member.role || 'مهندس DevOps')}</span>
+                </div>
+                ${isSelected ? '<i data-lucide="check" class="item-check"></i>' : ''}
+            `;
+            listEl.appendChild(item);
+        });
+    }
+
+    const activeMember = state.teamMembers.find(m => m.id === defaultId);
+    if (activeMember) {
+        renderMemberProfile(activeMember);
+    }
+    initLucide();
+}
+
+function toggleDevopsDropdown(event) {
+    if (event) event.stopPropagation();
+    const menu = document.getElementById('devopsDropdownMenu');
+    const pill = document.getElementById('userPill');
+    if (!menu || !pill) return;
+
+    const isOpen = menu.style.display === 'block';
+    if (isOpen) {
+        closeDevopsDropdown();
+    } else {
+        menu.style.display = 'block';
+        pill.classList.add('open');
+        initLucide();
+    }
+}
+
+function closeDevopsDropdown() {
+    const menu = document.getElementById('devopsDropdownMenu');
+    const pill = document.getElementById('userPill');
+    if (menu) menu.style.display = 'none';
+    if (pill) pill.classList.remove('open');
+}
+
+async function selectDevopsMember(memberId) {
+    closeDevopsDropdown();
+    const numId = parseInt(memberId, 10);
+    if (!numId || state.selectedMemberId === numId) return;
+
+    state.selectedMemberId = numId;
+    const selectedMember = state.teamMembers.find(m => m.id === numId);
+    if (selectedMember) {
+        renderMemberProfile(selectedMember);
+    }
+
+    // Reset filters to ALL so the user immediately sees all tasks for the selected member
+    state.filters.state = 'ALL';
+    state.filters.urgency = 'ALL';
+    state.filters.form = 'ALL';
+    state.filters.search = '';
+    const stateSel = document.getElementById('stateSelect');
+    if (stateSel) stateSel.value = 'ALL';
+    const urgencySel = document.getElementById('urgencySelect');
+    if (urgencySel) urgencySel.value = 'ALL';
+    const formSel = document.getElementById('formSelect');
+    if (formSel) formSel.value = 'ALL';
+    const searchInp = document.getElementById('searchInput');
+    if (searchInp) searchInp.value = '';
+    const clearBtn = document.getElementById('clearSearchBtn');
+    if (clearBtn) clearBtn.style.display = 'none';
+
+    // Refresh items active indicator
+    populateDevopsMemberSelect();
+
+    // Load tasks for this specific member
+    await loadMemberTasks(numId, true);
+}
+
+function renderMemberProfile(member) {
+    const avatarEl = document.getElementById('userAvatar');
+    const nameEl = document.getElementById('selectedMemberName');
+
+    if (nameEl) {
+        nameEl.textContent = member.username;
+    }
+
+    if (avatarEl) {
+        if (member.profile_picture) {
+            avatarEl.innerHTML = `<img src="${escapeHtml(member.profile_picture)}" alt="${escapeHtml(member.username)}">`;
+        } else {
+            avatarEl.textContent = member.initials || 'SRE';
+            if (member.color) avatarEl.style.backgroundColor = member.color;
+        }
+    }
+
+    updateSectionHeaderForMember(member);
+}
+
+function updateSectionHeaderForMember(member) {
+    const titleEl = document.querySelector('#viewMyTasks .section-title-wrap h2');
+    const descEl = document.querySelector('#viewMyTasks .section-title-wrap .section-desc');
+
+    if (titleEl && member) {
+        const isSelf = state.user && state.user.id === member.id;
+        titleEl.textContent = isSelf ? 'کارهای من (At a Glance)' : `کارهای ${member.username} (At a Glance)`;
+        if (descEl) {
+            descEl.textContent = isSelf
+                ? 'تسک‌های محول‌شده به شما، دسته‌بندی‌شده بر اساس وضعیت و رتبه‌بندی‌شده با اولویت هوش مصنوعی'
+                : `تسک‌های محول‌شده به ${member.username}، دسته‌بندی‌شده بر اساس وضعیت و رتبه‌بندی‌شده با اولویت هوش مصنوعی`;
+        }
+    }
+}
+
+async function onDevopsMemberChange(memberId) {
+    await selectDevopsMember(memberId);
+}
+
+async function loadMemberTasks(memberId, force = false) {
+    const container = document.getElementById('stateGroupsContainer');
+    if (container && state.activeTab === 'myTasks') {
+        container.innerHTML = `
+            <div class="loading-state">
+                <div class="liquid-spinner"></div>
+                <p>در حال واکشی و تحلیل هوشمند تسک‌ها...</p>
+            </div>
+        `;
+    }
+
+    try {
+        const url = `/api/tasks/my?user_id=${memberId}${force ? '&refresh=true' : ''}`;
+        const res = await fetch(url);
+        if (res.ok) {
+            state.myTasksData = await res.json();
+            updateMyTasksStats(state.myTasksData);
+            if (state.activeTab === 'myTasks') renderMyTasks();
+            updateStateFilterOptions();
+            updateGlobalStats();
+        } else {
+            showToast('خطا در دریافت تسک‌های کاربر انتخاب‌شده', 'error');
+        }
+    } catch (err) {
+        console.error('Error fetching member tasks:', err);
+        showToast('خطا در ارتباط با سرور', 'error');
+    } finally {
+        initLucide();
+    }
+}
+
+function renderUserProfile(user) {
+    // If team members haven't rendered yet, show current user
+    if (!state.selectedMemberId) {
+        const avatarEl = document.getElementById('userAvatar');
+        const select = document.getElementById('devopsMemberSelect');
+
+        if (avatarEl) {
+            if (user.profile_picture) {
+                avatarEl.innerHTML = `<img src="${escapeHtml(user.profile_picture)}" alt="${escapeHtml(user.username)}">`;
+            } else {
+                avatarEl.textContent = user.initials || 'SRE';
+                if (user.color) avatarEl.style.backgroundColor = user.color;
+            }
         }
     }
 }
@@ -140,9 +356,11 @@ async function refreshData(force = false) {
     if (refreshBtn) refreshBtn.classList.add('spinning');
 
     try {
+        const memberParam = state.selectedMemberId ? `?user_id=${state.selectedMemberId}${force ? '&refresh=true' : ''}` : (force ? '?refresh=true' : '');
+
         // Fetch all endpoints concurrently
         const [myTasksRes, sreTasksRes, analyticsRes] = await Promise.all([
-            fetch(`/api/tasks/my${force ? '?refresh=true' : ''}`),
+            fetch(`/api/tasks/my${memberParam}`),
             fetch(`/api/tasks/sre-forms${force ? '?refresh=true' : ''}`),
             fetch(`/api/analytics/sre${force ? '?refresh=true' : ''}`)
         ]);
@@ -480,7 +698,7 @@ function renderTaskRow(task) {
 
             <!-- 3. Duration in State Column -->
             <div class="col col-duration">
-                ${formatDaysSinceUpdate(task.date_updated, task.date_created)}
+                ${formatDaysSinceUpdate(task.date_updated, task.date_created, task.latest_comment_date)}
             </div>
 
             <!-- 4. Environment & Form / Repo Column -->
@@ -672,7 +890,7 @@ function renderSreTasks() {
                     </span>
                 </div>
                 <div class="col col-duration">
-                    ${formatDaysSinceUpdate(task.date_updated, task.date_created)}
+                    ${formatDaysSinceUpdate(task.date_updated, task.date_created, task.latest_comment_date)}
                 </div>
                 <div class="col col-form-env">
                     <div class="grid-badges-cell">
@@ -823,7 +1041,7 @@ function renderModalDetails(task) {
                         ${validCfs.map(cf => `
                             <div class="custom-field-card">
                                 <span class="cf-name">${escapeHtml(cf.name)}</span>
-                                <span class="cf-val">${formatCustomFieldValue(cf.display_value)}</span>
+                                <span class="cf-val">${formatCustomFieldValue(cf.display_value, cf.name, task.date_created)}</span>
                             </div>
                         `).join('')}
                     </div>
@@ -834,20 +1052,26 @@ function renderModalDetails(task) {
 
     // Comments Timeline
     const comments = task.comments || [];
-    const commentsHtml = comments.map(c => `
-        <div class="comment-bubble">
+    const commentsHtml = comments.map(c => {
+        const isReply = !!c.parent_id;
+        return `
+        <div class="comment-bubble ${isReply ? 'comment-bubble-reply' : ''}">
             <div class="comment-user-avatar">
                 ${c.user?.profile_picture ? `<img src="${escapeHtml(c.user.profile_picture)}" alt="${escapeHtml(c.user.username)}">` : escapeHtml(c.user?.initials || 'U')}
             </div>
             <div class="comment-content-wrap">
                 <div class="comment-header">
-                    <span class="comment-author">${escapeHtml(c.user?.username || 'کاربر')}</span>
+                    <div style="display:inline-flex; align-items:center; gap:0.4rem;">
+                        <span class="comment-author">${escapeHtml(c.user?.username || 'کاربر')}</span>
+                        ${isReply ? '<span class="badge-pill badge-reply" style="font-size:0.65rem; padding:0.1rem 0.4rem; background:rgba(99,102,241,0.15); color:#a5b4fc; border:1px solid rgba(99,102,241,0.3); border-radius:4px;"><i data-lucide="corner-down-left" style="width:10px; height:10px; display:inline-block; vertical-align:middle; margin-left:2px;"></i>پاسخ</span>' : ''}
+                    </div>
                     <span class="comment-date">${formatDate(c.date)}</span>
                 </div>
                 <div class="comment-text">${escapeHtml(c.text)}</div>
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
 
     modalBody.innerHTML = `
         <h2 class="modal-task-title">${escapeHtml(task.name)}</h2>
@@ -1021,7 +1245,7 @@ function toPersianNumber(n) {
     return n.toString().replace(/[0-9]/g, x => farsiDigits[x]);
 }
 
-function formatDaysSinceUpdate(dateUpdated, dateCreated) {
+function formatDaysSinceUpdate(dateUpdated, dateCreated, latestCommentDate) {
     const rawTs = dateUpdated || dateCreated;
     if (!rawTs) return '<span class="staleness-pill stale-recent">نامشخص</span>';
     try {
@@ -1054,8 +1278,18 @@ function formatDaysSinceUpdate(dateUpdated, dateCreated) {
             badgeClass = 'stale-extreme';
         }
 
-        const exactDate = formatDate(rawTs);
-        return `<span class="staleness-pill ${badgeClass}" title="آخرین تغییر وضعیت: ${exactDate} (${toPersianNumber(days)} روز قبل)">
+        const exactUpdateDate = formatDate(rawTs);
+        let tooltip = `آخرین تغییر: ${exactUpdateDate} (${toPersianNumber(days)} روز قبل)`;
+        if (dateCreated) {
+            const createdDays = Math.floor((Date.now() - parseInt(dateCreated)) / (1000 * 60 * 60 * 24));
+            tooltip += `\nعمر تسک: ${toPersianNumber(createdDays)} روز پیش (${formatDate(dateCreated)})`;
+        }
+        if (latestCommentDate) {
+            const commentDays = Math.floor((Date.now() - parseInt(latestCommentDate)) / (1000 * 60 * 60 * 24));
+            tooltip += `\nآخرین کامنت: ${toPersianNumber(commentDays)} روز پیش`;
+        }
+
+        return `<span class="staleness-pill ${badgeClass}" title="${escapeHtml(tooltip)}">
             <i data-lucide="clock"></i>
             <span>${text}</span>
         </span>`;
@@ -1090,12 +1324,46 @@ function extractRepoName(url) {
     }
 }
 
-function formatCustomFieldValue(val) {
+function formatCustomFieldValue(val, fieldName = '', dateCreated = null) {
+    if (val === null || val === undefined) return '-';
+
+    // If this is the "Task Age" field, calculate real positive days from dateCreated
+    if (fieldName && (fieldName.toLowerCase().includes('task age') || fieldName.toLowerCase().includes('عمر تسک'))) {
+        if (dateCreated) {
+            try {
+                const ts = parseInt(dateCreated);
+                const days = Math.floor((Date.now() - ts) / (1000 * 60 * 60 * 24));
+                return `${toPersianNumber(days)} روز`;
+            } catch {
+                // fallback
+            }
+        }
+    }
+
     if (Array.isArray(val)) {
-        return val.map(v => `<span class="badge-pill badge-repo" style="margin:2px;">${escapeHtml(v)}</span>`).join(' ');
+        return val.map(v => {
+            if (typeof v === 'object' && v !== null) {
+                const name = v.username || v.name || v.label || JSON.stringify(v);
+                return `<span class="badge-pill badge-repo" style="margin:2px;">${escapeHtml(name)}</span>`;
+            }
+            return `<span class="badge-pill badge-repo" style="margin:2px;">${escapeHtml(v)}</span>`;
+        }).join(' ');
+    }
+    if (typeof val === 'object') {
+        const name = val.username || val.name || val.label || JSON.stringify(val);
+        return escapeHtml(name);
     }
     if (typeof val === 'string' && (val.startsWith('http://') || val.startsWith('https://'))) {
         return `<a href="${escapeHtml(val)}" target="_blank" style="color:var(--text-accent); text-decoration:none;">${escapeHtml(val)}</a>`;
+    }
+    // If it is a number or numeric string
+    if (typeof val === 'number' || (typeof val === 'string' && val.trim() !== '' && !isNaN(val) && !isNaN(parseFloat(val)))) {
+        const num = parseFloat(val);
+        // If it's a negative integer for Task Age without dateCreated, flip it
+        if (fieldName && fieldName.toLowerCase().includes('age') && num < 0) {
+            return `${toPersianNumber(Math.abs(num))} روز`;
+        }
+        return toPersianNumber(num);
     }
     return escapeHtml(String(val));
 }
@@ -1171,7 +1439,13 @@ function renderAllCharts(data) {
         if (data.sre_forms) {
             populateStateCountFormSelect(data.sre_forms);
         }
-        renderStateCountChart(data.state_counts);
+        const stateSelect = document.getElementById('stateCountFormSelect');
+        const selectedForm = stateSelect ? stateSelect.value : 'all';
+        if (selectedForm !== 'all' && data.state_counts_by_form && data.state_counts_by_form[selectedForm]) {
+            renderStateCountChart(data.state_counts_by_form[selectedForm]);
+        } else {
+            renderStateCountChart(data.state_counts);
+        }
         renderAvgDaysNewChart(data.avg_days_new_by_form);
         renderAvgDaysInProgressChart(data.avg_days_in_progress_by_form);
         renderWeeklyThroughputChart(data.weekly_throughput);
@@ -1199,16 +1473,17 @@ function renderAssigneeDonut(donutList) {
         '#64748b'  // Slate for unassigned
     ];
 
-    // Fallback/Neutral mapping
-    const specialColors = {
-        'بدون مسئول': '#64748b',
-        'unassigned': '#64748b'
+    // Person-specific distinct color map
+        const personColors = {
+        "بدون مسئول": "#64748b",
+        "unassigned": "#64748b"
     };
 
     const colors = donutList.map((item, idx) => {
         const norm = (item.name || '').toLowerCase().trim();
-        if (specialColors[norm]) return specialColors[norm];
-        if (item.color && item.color !== '#3b82f6') return item.color;
+        for (const [k, c] of Object.entries(personColors)) {
+            if (norm.includes(k) || k.includes(norm)) return c;
+        }
         return vibrantPalette[idx % vibrantPalette.length];
     });
 
